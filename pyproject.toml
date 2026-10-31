@@ -1,0 +1,33 @@
+[project]
+name = "solar-gjilan"
+version = "0.1.0"
+description = "Solar energy potential in Gjilan, Kosovo: calculus and machine learning on real PVGIS and Open-Meteo data"
+readme = "README.md"
+authors = [
+    { name = "gazi04", email = "gazmendhalili2016@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "requests>=2.34.2",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.5",
+    "nbconvert>=7.17.2",
+    "nbformat>=5.11.1",
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
