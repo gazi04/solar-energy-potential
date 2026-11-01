@@ -22,7 +22,7 @@ uv run python scripts/make_figures.py            # regenerate reports/figures/*.
 uv run pytest                                    # all tests (offline, use tests/fixtures/)
 uv run pytest tests/test_data.py::test_load_pvcalc   # single test
 uv run jupyter nbconvert --to notebook --execute --inplace notebooks/00_first_look.ipynb   # re-run a notebook
-npx @marp-team/marp-cli reports/slides/hw1_idea.md --html -o reports/slides/hw1_idea.html  # slides
+npx @marp-team/marp-cli --no-stdin reports/slides/hw1_idea.md --html -o reports/slides/hw1_idea.html  # slides
 ```
 
 ## Architecture
@@ -51,6 +51,7 @@ Cached files: `data/raw/pvgis/input/hourly_horizontal_2005_2023.csv` (input), `d
 
 - PVGIS (SARAH3, 2005–2023) timestamps are **UTC** and stamped at `HH:10`. Open-Meteo ERA5 (`timezone=GMT`) is on the full hour, radiation = mean of the preceding hour, and snaps to grid point 42.5 N / 21.5 E. Align on a UTC index before joining.
 - PVGIS columns are renamed in `data.PVGIS_COLUMNS`; `sun_height` (H_sun) is a free reference for our own sun-elevation code; `reconstructed` (Int) is all 0.
+- **PVGIS zero-filled gaps:** 437 daylight hours (14 full days + scattered hours) have all radiation, P and `sun_height` = 0 while the sun is up — missing satellite data, not flagged by `Int`. Detect via computed elevation > ~1° with `sun_height == 0`; never treat as real 0 kWh days. Details in `data/README.md`.
 - UTC→local shifts 31 Dec 23:10 into the next year; `daily_energy` drops local days with < 23 hours. Divide yearly sums by 19, not by the number of distinct years.
 - PVGIS `seriescalc` with `components=1` returns irradiance **on the requested plane**. Download horizontal (`angle=0`) and do the transposition ourselves; download a 35° series and `PVcalc` only for validation.
 - Formulas use **solar time**; converting to clock time needs longitude correction (−25.9 min vs 15° E meridian) and the equation of time. Solar noon ≈ 11:34 CET.

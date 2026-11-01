@@ -15,7 +15,7 @@ The course math (trigonometry, derivatives, Newton's method, numerical integrati
 | [PVGIS-SARAH3](https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis_en) (EU JRC) | hourly beam/diffuse irradiance, sun height, modelled PV power (5 kWp, 14 % loss), flat and 35° tilt; official PVcalc estimate | 2005–2023 |
 | [Open-Meteo](https://open-meteo.com/en/docs/historical-weather-api) ERA5 | hourly temperature, humidity, cloud cover, wind, radiation | 2005–2023 |
 
-166,536 hourly rows per source; no missing hours, no NaNs. Raw data is about 25 MB in `data/raw/`. File roles, columns and units: [data/README.md](data/README.md).
+166,536 hourly rows per source; no missing rows, no NaNs, but 437 daylight hours where PVGIS stores missing satellite data as 0 (handled in cleaning; see [data/README.md](data/README.md#known-issues)). Raw data is about 25 MB in `data/raw/`. File roles, columns and units: [data/README.md](data/README.md).
 
 ## Setup
 
@@ -45,8 +45,8 @@ uv run pytest                             # tests (offline)
 Slides (Marp markdown):
 
 ```bash
-npx @marp-team/marp-cli reports/slides/hw1_idea.md --html -o reports/slides/hw1_idea.html
-npx @marp-team/marp-cli reports/slides/hw1_idea.md --pdf --allow-local-files   # needs Chromium/Chrome
+npx @marp-team/marp-cli --no-stdin reports/slides/hw1_idea.md --html -o reports/slides/hw1_idea.html
+npx @marp-team/marp-cli --no-stdin reports/slides/hw1_idea.md --pdf --allow-local-files   # needs Chromium/Chrome
 ```
 
 ## Layout

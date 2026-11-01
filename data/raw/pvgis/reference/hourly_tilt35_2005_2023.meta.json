@@ -1,0 +1,166 @@
+{
+ "downloaded_at": "2026-10-31T15:41:28+00:00",
+ "url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc",
+ "params": {
+  "lat": 42.46,
+  "lon": 21.47,
+  "raddatabase": "PVGIS-SARAH3",
+  "startyear": 2005,
+  "endyear": 2023,
+  "angle": 35,
+  "aspect": 0,
+  "components": 1,
+  "pvcalculation": 1,
+  "peakpower": 5.0,
+  "loss": 14.0,
+  "usehorizon": 1,
+  "outputformat": "json"
+ },
+ "inputs": {
+  "location": {
+   "latitude": 42.46,
+   "longitude": 21.47,
+   "elevation": 515.0
+  },
+  "meteo_data": {
+   "radiation_db": "PVGIS-SARAH3",
+   "meteo_db": "ERA5",
+   "year_min": 2005,
+   "year_max": 2023,
+   "use_horizon": true,
+   "horizon_db": null,
+   "horizon_data": "DEM-calculated"
+  },
+  "mounting_system": {
+   "fixed": {
+    "slope": {
+     "value": 35,
+     "optimal": false
+    },
+    "azimuth": {
+     "value": 0,
+     "optimal": false
+    },
+    "type": "free-standing"
+   }
+  },
+  "pv_module": {
+   "technology": "c-Si",
+   "peak_power": 5.0,
+   "system_loss": 14.0
+  }
+ },
+ "meta": {
+  "inputs": {
+   "location": {
+    "description": "Selected location",
+    "variables": {
+     "latitude": {
+      "description": "Latitude",
+      "units": "decimal degree"
+     },
+     "longitude": {
+      "description": "Longitude",
+      "units": "decimal degree"
+     },
+     "elevation": {
+      "description": "Elevation",
+      "units": "m"
+     }
+    }
+   },
+   "meteo_data": {
+    "description": "Sources of meteorological data",
+    "variables": {
+     "radiation_db": {
+      "description": "Solar radiation database"
+     },
+     "meteo_db": {
+      "description": "Database used for meteorological variables other than solar radiation"
+     },
+     "year_min": {
+      "description": "First year of the calculations"
+     },
+     "year_max": {
+      "description": "Last year of the calculations"
+     },
+     "use_horizon": {
+      "description": "Include horizon shadows"
+     },
+     "horizon_db": {
+      "description": "Source of horizon data"
+     }
+    }
+   },
+   "mounting_system": {
+    "description": "Mounting system",
+    "choices": "fixed, vertical_axis, inclined_axis, two_axis",
+    "fields": {
+     "slope": {
+      "description": "Inclination angle from the horizontal plane",
+      "units": "degree"
+     },
+     "azimuth": {
+      "description": "Orientation (azimuth) angle of the (fixed) PV system (0 = S, 90 = W, -90 = E)",
+      "units": "degree"
+     }
+    }
+   },
+   "pv_module": {
+    "description": "PV module parameters",
+    "variables": {
+     "technology": {
+      "description": "PV technology"
+     },
+     "peak_power": {
+      "description": "Nominal (peak) power of the PV module",
+      "units": "kW"
+     },
+     "system_loss": {
+      "description": "Sum of system losses",
+      "units": "%"
+     }
+    }
+   }
+  },
+  "outputs": {
+   "hourly": {
+    "type": "time series",
+    "timestamp": "hourly averages",
+    "variables": {
+     "P": {
+      "description": "PV system power",
+      "units": "W"
+     },
+     "Gb(i)": {
+      "description": "Beam (direct) irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "Gd(i)": {
+      "description": "Diffuse irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "Gr(i)": {
+      "description": "Reflected irradiance on the inclined plane (plane of the array)",
+      "units": "W/m2"
+     },
+     "H_sun": {
+      "description": "Sun height",
+      "units": "degree"
+     },
+     "T2m": {
+      "description": "2-m air temperature",
+      "units": "degree Celsius"
+     },
+     "WS10m": {
+      "description": "10-m total wind speed",
+      "units": "m/s"
+     },
+     "Int": {
+      "description": "1 means solar radiation values are reconstructed"
+     }
+    }
+   }
+  }
+ }
+}
