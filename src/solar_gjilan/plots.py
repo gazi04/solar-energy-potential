@@ -135,7 +135,7 @@ def monthly_energy(flat: pd.DataFrame, tilted: pd.DataFrame, tilt: float) -> plt
                         color=SERIES[i], alpha=0.14, linewidth=0)
         ax.plot(months, mean, color=SERIES[i], marker="o", markersize=5,
                 markeredgecolor=SURFACE, markeredgewidth=1.5, label=label)
-        ax.annotate(f"{label}: {daily.sum() / len(set(idx.year)):,.0f} kWh/yr",
+        ax.annotate(f"{label}: {daily.sum() / (cfg.END_YEAR - cfg.START_YEAR + 1):,.0f} kWh/yr",
                     (12, mean.iloc[-1]), xytext=(8, 0), textcoords="offset points",
                     va="center", color=TEXT, fontsize=8.5)
     ax.set_xticks(months, ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -158,12 +158,12 @@ def irradiation_heatmap(flat: pd.DataFrame) -> plt.Figure:
     apply_style()
     daily = data.daily_energy(flat, "G_poa")
     idx = pd.to_datetime(daily.index)
-    table = pd.Series(daily.values, index=[idx.year, idx.dayofyear]).unstack()
+    table = pd.Series(daily.values, index=[idx.year, idx.day_of_year]).unstack()
     fig, ax = plt.subplots(figsize=(10, 4.4))
     im = ax.imshow(table.values, aspect="auto", cmap=SEQ_CMAP, interpolation="nearest",
                    extent=(0.5, table.shape[1] + 0.5, table.index.max() + 0.5, table.index.min() - 0.5))
     ax.grid(False)
-    month_starts = pd.date_range("2023-01-01", periods=12, freq="MS").dayofyear
+    month_starts = pd.date_range("2023-01-01", periods=12, freq="MS").day_of_year
     ax.set_xticks(month_starts, ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], ha="left")
     ax.set_yticks(table.index[::2])
