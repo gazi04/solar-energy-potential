@@ -7,11 +7,17 @@ the M1 notebook. Interface: degrees, timestamps are UTC.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 from pvlib import solarposition
+from scipy.optimize import newton
 
 from solar_gjilan import config as cfg
+
+PHI = np.deg2rad(cfg.LAT)
 
 
 def sun_position(index: pd.DatetimeIndex) -> pd.DataFrame:
@@ -48,3 +54,82 @@ def sun_position(index: pd.DatetimeIndex) -> pd.DataFrame:
         },
         index=index,
     )
+
+
+def horizon_f(t: ArrayLike, delta: ArrayLike, alpha0: float = 0.0) -> Any:
+    """
+    f(t) = sin(alpha(t)) - sin(alpha0); root = sun crosses alpha0.
+    t: solar time [h]
+    delta: declination [rad]
+    alpha0: horizon angle [deg]
+    (0 = geometric, -0.8333 = apparent sunrise).
+    """
+    h = np.deg2rad(15.0 * (np.asarray(t) - 12.0))
+    return (
+        np.sin(PHI) * np.sin(delta)
+        + np.cos(PHI) * np.cos(delta) * np.cos(h)
+        - np.sin(np.deg2rad(alpha0))
+    )
+
+
+def horizon_fprime(t: ArrayLike, delta: ArrayLike, _alpha0: float = 0.0) -> Any:
+    """
+    df/dt = -cos(phi) cos(delta) sin(h) * pi/12
+
+    _alpha0 is unused (d/dt of the constant sin(alpha0) is 0) but must be
+    accepted because scipy.optimize.newton passes the same args to f and fprime.
+    """
+    h = np.deg2rad(15.0 * (np.asarray(t) - 12.0))
+    return -np.cos(PHI) * np.cos(delta) * np.sin(h) * np.pi / 12.0
+
+
+def newton_table(n: int, t0: float = 6.0, alpha0: float = 0.0) -> tuple[Any, pd.DataFrame]:
+    delta = solarposition.declination_spencer71(n)
+    path: list[float] = []
+
+    def f_log(t: float, d: float, a0: float) -> Any:
+        path.append(t)
+        return horizon_f(t, d, a0)
+
+    root = newton(f_log, t0, fprime=horizon_fprime, args=(delta, alpha0), tol=1e-12)
+    table = pd.DataFrame({"k": range(len(path)), "t_k": path})
+    table["error"] = (table["t_k"] - root).abs()
+    return root, table
+
+
+def sunrise_exact(n: ArrayLike, alpha0: float = 0.0) -> Any:
+    delta = solarposition.declination_spencer71(n)
+    cos_h0 = (np.sin(np.deg2rad(alpha0)) - np.sin(PHI) * np.sin(delta)) / (
+        np.cos(PHI) * np.cos(delta)
+    )
+
+    return 12.0 - np.rad2deg(np.arccos(cos_h0)) / 15.0
+
+
+def sunrise_sunset(n: ArrayLike, alpha0: float = 0.0) -> pd.DataFrame:
+    """
+    Sunrise sunset [solar h] and day length [h] for day(s) of year n, via Newton.
+    """
+    n = np.atleast_1d(np.asarray(n))
+    delta = solarposition.declination_spencer71(n)
+    t0 = np.full(n.shape, 6.0)
+    sunrise = newton(
+        horizon_f, t0, fprime=horizon_fprime, args=(delta, alpha0), tol=1e-12
+    )
+    sunset = 24.0 - sunrise
+    return pd.DataFrame(
+        {"sunrise": sunrise, "sunset": sunset, "day_length": sunset - sunrise},
+        index=pd.Index(n, name="n"),
+    )
+
+
+def to_clock(t_solar: ArrayLike, date: Any) -> pd.DatetimeIndex:
+    """Solar time [h] on given date(s) -> Europe/Belgrade clock time.
+
+    UTC = t_solar - LON/15 - EoT/60.
+    """
+    date = pd.DatetimeIndex(pd.to_datetime(date))
+    eot = solarposition.equation_of_time_spencer71(date.day_of_year)
+    utc_hours = np.asarray(t_solar) - cfg.LON / 15.0 - eot / 60.0
+    utc = date.tz_localize("UTC") + pd.to_timedelta(utc_hours, unit="h")
+    return utc.tz_convert(cfg.TZ)
