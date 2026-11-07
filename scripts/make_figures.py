@@ -29,6 +29,7 @@ def main() -> None:
         "fig04_sun_elevation_days": plots.sun_elevation_days(
             hourly, [f"{FIGURE_YEAR}-06-21", f"{FIGURE_YEAR}-03-21", f"{FIGURE_YEAR}-12-21"]
         ),
+        "fig07_day_length": plots.day_length_year(FIGURE_YEAR),
     }
     for name, fig in figures.items():
         print(f"saved {plots.save(fig, name).relative_to(cfg.ROOT)}")

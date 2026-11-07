@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+import matplotlib.dates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -214,5 +215,59 @@ def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> plt.Figure
     ax.set_ylabel("Sun elevation α (°)")
     ax.set_title("Sun elevation in Gjilan (line = our pvlib curve, dots = PVGIS sun_height)", pad=10)
     ax.legend(loc="upper left")
+    fig.tight_layout()
+    return fig
+
+
+# --- figure 7 ------------------------------------------------------------------
+
+
+def day_length_year(year: int) -> plt.Figure:
+    """Sunrise/sunset local clock time and day length for every day of ``year``.
+
+    Geometric sunrise (alpha = 0), solved with Newton (``sun.sunrise_sunset``) in solar
+    time and converted to Europe/Belgrade clock time (``sun.to_clock``), so the
+    CET/CEST jumps in March and October are visible.
+    """
+    apply_style()
+    dates = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D")
+    rs = sun.sunrise_sunset(dates.day_of_year.to_numpy())
+    rise = sun.to_clock(rs["sunrise"].to_numpy(), dates)
+    sset = sun.to_clock(rs["sunset"].to_numpy(), dates)
+    rise_h = np.asarray(_clock_hours(rise)) + rise.second / 3600
+    set_h = np.asarray(_clock_hours(sset)) + sset.second / 3600
+    length = rs["day_length"].to_numpy()
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 6.4), sharex=True,
+                                   gridspec_kw={"height_ratios": [1.3, 1]})
+
+    ax1.fill_between(dates, rise_h, set_h, color=SERIES[3], alpha=0.18, linewidth=0)
+    ax1.plot(dates, rise_h, color=SERIES[1], label="Sunrise")
+    ax1.plot(dates, set_h, color=SERIES[0], label="Sunset")
+    dst = dates[rise.map(lambda ts: ts.dst() != pd.Timedelta(0))]
+    for switch, text in [(dst[0], "CEST starts\n(+1 h)"), (dst[-1] + pd.Timedelta(days=1), "CET returns\n(−1 h)")]:
+        ax1.axvline(switch, color=TEXT_2, linewidth=1, linestyle=":")
+        ax1.text(switch, 12, f" {text}", color=TEXT_2, fontsize=8, va="center")
+    ax1.set_ylim(3, 22)
+    ax1.set_yticks(range(3, 23, 3))
+    ax1.set_ylabel("Local clock time (h)")
+    ax1.set_title(f"Sunrise and sunset in Gjilan, {year} (geometric, α = 0°, Newton's method)", pad=10)
+    ax1.legend(loc="upper left", ncols=2)
+
+    ax2.fill_between(dates, length, color=SERIES[0], alpha=0.14, linewidth=0)
+    ax2.plot(dates, length, color=SERIES[0])
+    ax2.axhline(12, color=TEXT_2, linewidth=1, linestyle=":")
+    for k, va, ha, off in [(length.argmax(), "bottom", "center", 6), (length.argmin(), "top", "right", -6)]:
+        hh, mm = divmod(round(length[k] * 60), 60)
+        ax2.annotate(f"{length[k]:.2f} h ({hh} h {mm:02d} min), {dates[k]:%d %b}", (dates[k], length[k]),
+                     xytext=(0, off), textcoords="offset points", ha=ha, va=va,
+                     color=TEXT, fontsize=8.5)
+        ax2.plot(dates[k], length[k], "o", color=SERIES[0], markeredgecolor=SURFACE, markeredgewidth=1.5)
+    ax2.set_ylim(6, 18)
+    ax2.set_ylabel("Day length (h)")
+    ax2.set_title("Day length = sunset − sunrise (dotted: 12 h at the equinoxes)", pad=8)
+    ax2.xaxis.set_major_locator(matplotlib.dates.MonthLocator())
+    ax2.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%b"))
+    ax2.set_xlim(dates[0], dates[-1])
     fig.tight_layout()
     return fig
