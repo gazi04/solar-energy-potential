@@ -6,6 +6,7 @@ sequential ramp), so every figure in the project reads as one system.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 
 from solar_gjilan import config as cfg
-from solar_gjilan import data
+from solar_gjilan import data, sun
 
 # --- palette -----------------------------------------------------------------
 SURFACE = "#fcfcfb"
@@ -173,5 +174,45 @@ def irradiation_heatmap(flat: pd.DataFrame) -> plt.Figure:
     cbar.outline.set_visible(False)
     ax.set_title("Every day of 19 years: daily solar irradiation on a horizontal surface in Gjilan "
                  "(dark = sunny, light = cloudy/winter)", pad=10)
+    fig.tight_layout()
+    return fig
+
+
+# --- figure 4 ------------------------------------------------------------------
+
+
+def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> plt.Figure:
+    """Sun elevation over one day for several dates: our pvlib curve vs PVGIS sun_height.
+
+    Line: elevation on a 1-minute grid over the local day (sun.sun_position).
+    Dots: PVGIS ``sun_height`` at its real stamp HH:10 UTC (night and gap hours dropped).
+    """
+    apply_style()
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    for color, date in zip(SERIES, dates):
+        local = pd.date_range(date, periods=24 * 60, freq="min", tz=cfg.TZ)
+        elev = sun.sun_position(local.tz_convert("UTC"))["elevation"].to_numpy()
+        t = np.asarray(_clock_hours(local))
+        ax.plot(t, elev, color=color, label=f"{pd.Timestamp(date):%d %B}")
+
+        day = hourly.loc[local[0].tz_convert("UTC"):local[-1].tz_convert("UTC")]
+        day = day[day["sun_height_pvgis"] > 0]
+        stamp = (day.index + pd.Timedelta(minutes=10)).tz_convert(cfg.TZ)
+        ax.scatter(_clock_hours(stamp), day["sun_height_pvgis"], color=color, s=22,
+                   edgecolor=SURFACE, linewidth=1, zorder=3)
+
+        k = elev.argmax()
+        ax.annotate(f"max {elev[k]:.1f}° at {local[k]:%H:%M}", (t[k], elev[k]),
+                    xytext=(0, 6), textcoords="offset points", ha="center",
+                    color=TEXT, fontsize=8.5)
+
+    ax.axhline(0, color=TEXT_2, linewidth=1)  # horizon
+    ax.set_xlim(0, 24)
+    ax.set_xticks(range(0, 25, 3))
+    ax.set_ylim(-5, 80)
+    ax.set_xlabel("Local clock time (h)")
+    ax.set_ylabel("Sun elevation α (°)")
+    ax.set_title("Sun elevation in Gjilan (line = our pvlib curve, dots = PVGIS sun_height)", pad=10)
+    ax.legend(loc="upper left")
     fig.tight_layout()
     return fig
