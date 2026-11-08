@@ -56,6 +56,24 @@ def sun_position(index: pd.DatetimeIndex) -> pd.DataFrame:
     )
 
 
+def elevation_course(index: pd.DatetimeIndex, declination: str = "cooper", eot: str = "milne") -> np.ndarray:
+    """Sun elevation [deg] from the course formulas, to measure their error against SPA.
+
+    sin(alpha) = sin(phi) sin(delta) + cos(phi) cos(delta) cos(h), with
+    delta from Cooper 1969 (or Spencer 1971), EoT from Milne 1921 / pvlib "pvcdrom"
+    (or Spencer 1971), h from UTC + longitude + EoT (pvlib ``hour_angle``).
+    delta and EoT are evaluated once per day (day of year), as in the course.
+    """
+    if index.tz is None:
+        raise ValueError("index must be timezone-aware (UTC)")
+    n = index.day_of_year.to_numpy()
+    delta = {"cooper": solarposition.declination_cooper69, "spencer": solarposition.declination_spencer71}[declination](n)
+    eq = {"milne": solarposition.equation_of_time_pvcdrom, "spencer": solarposition.equation_of_time_spencer71}[eot](n)
+    h = np.deg2rad(np.asarray(solarposition.hour_angle(index, cfg.LON, eq)))
+    zenith = np.asarray(solarposition.solar_zenith_analytical(PHI, h, delta))
+    return 90.0 - np.rad2deg(zenith)
+
+
 def horizon_f(t: ArrayLike, delta: ArrayLike, alpha0: float = 0.0) -> Any:
     """
     f(t) = sin(alpha(t)) - sin(alpha0); root = sun crosses alpha0.
