@@ -13,7 +13,9 @@ import matplotlib.dates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.figure import Figure
 
 from solar_gjilan import config as cfg
 from solar_gjilan import data, sun
@@ -60,7 +62,7 @@ def apply_style() -> None:
     )
 
 
-def save(fig: plt.Figure, name: str, fig_dir: Path | None = None) -> Path:
+def save(fig: Figure, name: str, fig_dir: Path | None = None) -> Path:
     fig_dir = fig_dir or cfg.FIG_DIR
     fig_dir.mkdir(parents=True, exist_ok=True)
     path = fig_dir / f"{name}.png"
@@ -69,13 +71,13 @@ def save(fig: plt.Figure, name: str, fig_dir: Path | None = None) -> Path:
 
 
 def _clock_hours(index: pd.DatetimeIndex) -> np.ndarray:
-    return index.hour + index.minute / 60
+    return np.asarray(index.hour + index.minute / 60)
 
 
 # --- figure 1 ------------------------------------------------------------------
 
 
-def summer_vs_winter_day(hourly: pd.DataFrame, summer: str, winter: str) -> plt.Figure:
+def summer_vs_winter_day(hourly: pd.DataFrame, summer: pd.Timestamp | str, winter: pd.Timestamp | str) -> Figure:
     """Irradiance (beam + diffuse) and 5 kWp PV power for one summer and one winter day.
 
     Small multiples: columns = days, rows = measure; each row shares its y-scale so
@@ -86,7 +88,7 @@ def summer_vs_winter_day(hourly: pd.DataFrame, summer: str, winter: str) -> plt.
                              gridspec_kw={"height_ratios": [1.3, 1]})
     for col, date in enumerate([summer, winter]):
         day = data.one_day(hourly, date)
-        t = _clock_hours(day.index)
+        t = _clock_hours(data.time_index(day))
         e_kwh = day["P_W"].sum() / 1000
         h_kwh = day["G_poa"].sum() / 1000
         noon_sun = day["sun_height"].max()
@@ -123,7 +125,7 @@ def summer_vs_winter_day(hourly: pd.DataFrame, summer: str, winter: str) -> plt.
 # --- figure 2 ------------------------------------------------------------------
 
 
-def monthly_energy(flat: pd.DataFrame, tilted: pd.DataFrame, tilt: float) -> plt.Figure:
+def monthly_energy(flat: pd.DataFrame, tilted: pd.DataFrame, tilt: float) -> Figure:
     """Mean daily PV energy per month, flat vs tilted, with year-to-year range."""
     apply_style()
     fig, ax = plt.subplots(figsize=(9, 4.6))
@@ -155,7 +157,7 @@ def monthly_energy(flat: pd.DataFrame, tilted: pd.DataFrame, tilt: float) -> plt
 # --- figure 3 ------------------------------------------------------------------
 
 
-def irradiation_heatmap(flat: pd.DataFrame) -> plt.Figure:
+def irradiation_heatmap(flat: pd.DataFrame) -> Figure:
     """Daily horizontal irradiation, year × day of year: completeness and cloudiness at a glance."""
     apply_style()
     daily = data.daily_energy(flat, "G_poa")
@@ -182,7 +184,7 @@ def irradiation_heatmap(flat: pd.DataFrame) -> plt.Figure:
 # --- figure 4 ------------------------------------------------------------------
 
 
-def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> plt.Figure:
+def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> Figure:
     """Sun elevation over one day for several dates: our pvlib curve vs PVGIS sun_height.
 
     Line: elevation on a 1-minute grid over the local day (sun.sun_position).
@@ -198,7 +200,7 @@ def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> plt.Figure
 
         day = hourly.loc[local[0].tz_convert("UTC"):local[-1].tz_convert("UTC")]
         day = day[day["sun_height_pvgis"] > 0]
-        stamp = (day.index + pd.Timedelta(minutes=10)).tz_convert(cfg.TZ)
+        stamp = (data.time_index(day) + pd.Timedelta(minutes=10)).tz_convert(cfg.TZ)
         ax.scatter(_clock_hours(stamp), day["sun_height_pvgis"], color=color, s=22,
                    edgecolor=SURFACE, linewidth=1, zorder=3)
 
@@ -222,7 +224,7 @@ def sun_elevation_days(hourly: pd.DataFrame, dates: Sequence[str]) -> plt.Figure
 # --- figure 7 ------------------------------------------------------------------
 
 
-def day_length_year(year: int) -> plt.Figure:
+def day_length_year(year: int) -> Figure:
     """Sunrise/sunset local clock time and day length for every day of ``year``.
 
     Geometric sunrise (alpha = 0), solved with Newton (``sun.sunrise_sunset``) in solar
@@ -277,7 +279,7 @@ def day_length_year(year: int) -> plt.Figure:
 
 
 def derivatives_overview(hourly: pd.DataFrame, daily: pd.DataFrame, year: int, month: int = 6,
-                         n: int = 172) -> plt.Figure:
+                         n: int = 172) -> Figure:
     """Derivatives (M1 step 5), six panels.
 
     Row 1: sun elevation α(t) on day ``n`` and its derivative dα/dt (analytic line,
@@ -375,4 +377,173 @@ def derivatives_overview(hourly: pd.DataFrame, daily: pd.DataFrame, year: int, m
     fig.suptitle("Derivatives: rate of change of sun height and PV power in Gjilan",
                  x=0.01, ha="left", fontsize=12, fontweight="bold", color=TEXT)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return fig
+
+
+# --- figure 5 ------------------------------------------------------------------
+
+
+def declination_eot(year: int = 2023) -> Figure:
+    """Declination δ(n) and equation of time EoT(n): course formulas vs Spencer 1971.
+
+    Course formulas: Cooper 1969 for δ, Milne 1921 (pvlib ``equation_of_time_pvcdrom``)
+    for EoT. Reference: Spencer 1971 Fourier series (used by ``sun.sun_position``).
+    Two panels, no dual axis.
+    """
+    from pvlib import solarposition
+
+    apply_style()
+    n = np.arange(1, 366)
+    dates = pd.Timestamp(f"{year}-01-01") + pd.to_timedelta(n - 1, unit="D")
+    cooper = np.rad2deg(solarposition.declination_cooper69(n))
+    spencer_d = np.rad2deg(solarposition.declination_spencer71(n))
+    milne = solarposition.equation_of_time_pvcdrom(n)
+    spencer_e = solarposition.equation_of_time_spencer71(n)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.4))
+    ax1.plot(dates, spencer_d, color=SERIES[0], label="Spencer 1971 (reference)")
+    ax1.plot(dates, cooper, color=SERIES[1], linestyle="--", label="Cooper 1969 (course formula)")
+    ax1.axhline(0, color=TEXT_2, linewidth=1)
+    ax1.set_ylabel("Declination δ (°)")
+    err_d = np.abs(cooper - spencer_d)
+    ax1.set_title(f"Declination: Cooper vs Spencer, mean |Δ| {err_d.mean():.2f}°, max {err_d.max():.2f}°")
+    ax1.legend(loc="lower center")
+
+    ax2.plot(dates, spencer_e, color=SERIES[0], label="Spencer 1971 (reference)")
+    ax2.plot(dates, milne, color=SERIES[1], linestyle="--", label="Milne 1921 (course formula)")
+    ax2.axhline(0, color=TEXT_2, linewidth=1)
+    for k, va, off in [(spencer_e.argmax(), "bottom", 6), (spencer_e.argmin(), "top", -6)]:
+        ax2.annotate(f"{spencer_e[k]:+.1f} min, {dates[k]:%d %b}", (dates[k], spencer_e[k]),
+                     xytext=(0, off), textcoords="offset points", ha="center", va=va,
+                     color=TEXT, fontsize=8.5)
+    ax2.set_ylim(-19, 21)
+    ax2.set_ylabel("Equation of time (min)")
+    err_e = np.abs(milne - spencer_e)
+    ax2.set_title(f"Equation of time: Milne vs Spencer, mean |Δ| {err_e.mean():.2f} min")
+    ax2.legend(loc="upper left")
+    for ax in (ax1, ax2):
+        ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(bymonth=range(1, 13, 2)))
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%b"))
+        ax.set_xlim(dates[0], dates[-1])
+    fig.tight_layout()
+    return fig
+
+
+# --- figure 6 ------------------------------------------------------------------
+
+
+def newton_convergence(days: Sequence[tuple[int, str]] = ((172, "21 June"), (355, "21 December"))) -> Figure:
+    """Newton's method for sunrise: error per iteration (log scale) vs bisection.
+
+    Left: |t_k − t*| for Newton from t₀ = 6 h on each day (quadratic: the number of
+    correct digits roughly doubles each step). Right: Newton vs bisection on [0, 12] h
+    for the first day (bisection halves the interval each step: linear convergence).
+    """
+    from pvlib import solarposition
+    from scipy.optimize import bisect
+
+    apply_style()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.4))
+    for color, style, (n, label) in zip(SERIES, ["-", "--"], days):
+        root, table = sun.newton_table(n, t0=6.0)
+        tab = table[table["error"] > 0]
+        ax1.semilogy(tab["k"], tab["error"], color=color, linestyle=style, marker="o", markersize=6,
+                     markeredgecolor=SURFACE, markeredgewidth=1.5,
+                     label=f"{label}: sunrise {root:.4f} h solar time")
+    ax1.text(0.1, 1e-7, "both days lie on top of each other", color=TEXT_2, fontsize=8)
+    ax1.axhline(1e-9, color=TEXT_2, linewidth=1, linestyle=":")
+    ax1.text(2.05, 1.6e-9, "1e-9 h ≈ 4 µs", color=TEXT_2, fontsize=8)
+    ax1.set_xticks(range(0, 4))
+    ax1.set_xlabel("Iteration k")
+    ax1.set_ylabel("Error |t_k − t*| (h)")
+    ax1.set_title("Newton from t₀ = 6 h: < 1e-9 h after 3 steps")
+    ax1.legend(loc="upper right")
+
+    n0, label0 = days[0]
+    delta = solarposition.declination_spencer71(n0)
+    root, newton_tab = sun.newton_table(n0, t0=6.0)
+    mids: list[float] = []
+
+    def f_log(t: float) -> float:
+        mids.append(t)
+        return float(sun.horizon_f(t, delta))
+
+    bisect(f_log, 0.0, 12.0, xtol=1e-12)
+    bis_err = np.abs(np.array(mids[2:]) - root)  # first two calls are the end points
+    bis_err = bis_err[bis_err > 0]
+    ax2.semilogy(np.arange(1, len(bis_err) + 1), bis_err, color=SERIES[2], marker="o",
+                 markersize=3.5, label=f"Bisection on [0, 12] h ({len(bis_err)} steps)")
+    newt = newton_tab[newton_tab["error"] > 0]
+    ax2.semilogy(newt["k"], newt["error"], color=SERIES[0], marker="o", markersize=6,
+                 markeredgecolor=SURFACE, markeredgewidth=1.5, label=f"Newton from t₀ = 6 h ({len(newt) - 1} steps)")
+    ax2.set_xlabel("Iteration k")
+    ax2.set_ylabel("Error |t_k − t*| (h)")
+    ax2.set_title(f"Newton (quadratic) vs bisection (linear), {label0}")
+    ax2.legend(loc="upper right")
+    fig.tight_layout()
+    return fig
+
+
+# --- figure 9 ------------------------------------------------------------------
+
+
+def data_quality(hourly: pd.DataFrame, daily: pd.DataFrame, gap_day: str = "2008-05-18") -> Figure:
+    """PVGIS zero-filled gaps: how many, what one looks like, what cleaning does.
+
+    A: gap hours per year, split into filled (≤ 2 h runs) and still NaN.
+    B: a full-gap day: PVGIS reports 0 while ERA5 shows daylight and the sun is up.
+    C: a short-gap day (clearest complete day with filled hours): raw zeros vs filled values.
+    """
+    apply_style()
+    fig = plt.figure(figsize=(11, 8.4))
+    gs = fig.add_gridspec(2, 2, height_ratios=[1, 1.1])
+    ax_a = fig.add_subplot(gs[0, :])
+    ax_b = fig.add_subplot(gs[1, 0])
+    ax_c = fig.add_subplot(gs[1, 1], sharey=ax_b)
+
+    gap = hourly["pvgis_gap"]
+    year = data.time_index(hourly).year
+    filled = (gap & hourly["filled"]).groupby(year).sum()
+    nan = (gap & ~hourly["filled"]).groupby(year).sum()
+    years = filled.index.to_numpy()
+    ax_a.bar(years, filled, color=SERIES[0], width=0.7, label=f"Filled (≤ 2 h runs): {filled.sum()} h")
+    ax_a.bar(years, nan, bottom=filled, color=SERIES[1], width=0.7, label=f"Left as NaN (longer runs): {nan.sum()} h")
+    ax_a.set_xticks(years, [str(y) for y in years])
+    ax_a.grid(axis="x", visible=False)
+    ax_a.set_ylabel("Gap hours")
+    ax_a.set_title(f"PVGIS daylight hours stored as 0 (sun > 5° but sun_height = 0): {int(gap.sum())} h in "
+                   f"{cfg.START_YEAR}–{cfg.END_YEAR}")
+    ax_a.legend(loc="upper right")
+
+    def raw_ghi(day: pd.DataFrame) -> pd.Series:
+        """PVGIS GHI as delivered: gap hours were 0."""
+        return day["ghi"].where(~day["pvgis_gap"], 0.0)
+
+    def draw(ax: Axes, date: str, title: str) -> None:
+        day = data.one_day(hourly, date)
+        t = np.asarray(_clock_hours(pd.DatetimeIndex(day.index))) + 0.5  # centre of the hour
+        up = day["elevation"] > 5
+        ax.fill_between(t, 0, 1, where=up.to_numpy(), transform=ax.get_xaxis_transform(),
+                        color=SERIES[3], alpha=0.12, linewidth=0, step="mid", label="Sun > 5°")
+        ax.plot(t, day["ghi_era5"], color=SERIES[2], label="ERA5 GHI (Open-Meteo)")
+        ax.plot(t, raw_ghi(day), color=SERIES[1], marker="o", markersize=3.5, label="PVGIS GHI, raw")
+        g = day["pvgis_gap"].to_numpy()
+        if day.loc[day["pvgis_gap"], "ghi"].notna().any():
+            ax.plot(t, day["ghi"], color=SERIES[0], label="PVGIS GHI, cleaned")
+            ax.scatter(t[g], day["ghi"].to_numpy()[g], color=SERIES[0], s=40, zorder=4,
+                       edgecolor=SURFACE, linewidth=1.2, label="Filled hours")
+        ax.set_xlim(3, 22)
+        ax.set_xticks(range(3, 23, 3))
+        ax.set_xlabel("Local clock time (h)")
+        ax.set_title(title)
+        ax.legend(loc="upper left", fontsize=8)
+
+    draw(ax_b, gap_day, f"Full-gap day {pd.Timestamp(gap_day):%d %b %Y}: stays NaN")
+    short = data.argmax_date(daily[(daily["n_filled_hours"] > 0) & daily["complete"]]["kt_daily"])
+    n_fill = int(daily.loc[[short], "n_filled_hours"].to_numpy()[0])
+    draw(ax_c, f"{short:%Y-%m-%d}", f"Short gap {short:%d %b %Y}: {n_fill} h filled with k·g0")
+    ax_b.set_ylabel("Horizontal irradiance (W/m²)")
+    ax_b.set_ylim(0, 1150)
+    plt.setp(ax_c.get_yticklabels(), visible=False)
+    fig.tight_layout()
     return fig
