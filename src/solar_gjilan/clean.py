@@ -111,9 +111,9 @@ def align(pv: pd.DataFrame, pv35: pd.DataFrame, era: pd.DataFrame) -> pd.DataFra
 
     The result must be a continuous hourly series without duplicates.
     """
-    pv = pv.set_axis(pvgis_key(pv.index))
-    pv35 = pv35.set_axis(pvgis_key(pv35.index))
-    era = era.set_axis(era5_key(era.index))
+    pv = pv.set_axis(pvgis_key(data.time_index(pv)))
+    pv35 = pv35.set_axis(pvgis_key(data.time_index(pv35)))
+    era = era.set_axis(era5_key(data.time_index(era)))
     df = pv.join(pv35, how="inner").join(era, how="inner")
     df.index.name = "time"
     if df.index.has_duplicates:
@@ -135,7 +135,7 @@ def lag_correlation(a: pd.Series, b: pd.Series, lags: Iterable[int] = range(-2, 
 
 def mean_peak_hour(s: pd.Series) -> float:
     """Mean UTC hour (key) of the daily maximum."""
-    peak = s.groupby(s.index.date).idxmax()
+    peak = s.groupby(data.time_index(s).date).idxmax()
     return float(pd.DatetimeIndex(peak.to_numpy()).hour.to_numpy().mean())
 
 
@@ -153,7 +153,7 @@ def add_geometry(df: pd.DataFrame) -> pd.DataFrame:
     1366.1 W/m² × Spencer's Earth–Sun distance factor). It agrees with the
     textbook ``1361 · (1 + 0.033 cos(360° n / 365))`` within about 0.5 %.
     """
-    stamp = df.index + pd.Timedelta(minutes=10)
+    stamp = data.time_index(df) + pd.Timedelta(minutes=10)
     pos = sun.sun_position(stamp)
     out = df.copy()
     out["elevation"] = pos["elevation"].to_numpy()
@@ -336,12 +336,13 @@ def build_daily(hourly: pd.DataFrame) -> pd.DataFrame:
 
     Energies are left Riemann sums ``Σ X · 1 h``; M2 compares them with trapezoid
     and Simpson. NaN hours count as 0 in the sums; ``complete`` says whether any
-    daylight hour is still NaN (decision D7: M3 uses complete days only).
+    daylight hour is still NaN (decision D7: M3 uses complete days only). Days with no
+    valid hour at sun > 5° (full-gap days) get NaN energies instead of a false 0 kWh.
     Days with fewer than 23 hourly rows (edges of the UTC→local shift) are dropped.
     """
     local = data.to_local(hourly)
     daylight = local["elevation"] > 0
-    day = pd.Index(local.index.date, name="date")
+    day = pd.Index(data.time_index(local).date, name="date")
     g = local.groupby(day)
 
     weather = local[["temp_era5", "cloud_era5", "wind_era5", "rh_era5"]].where(daylight, axis=0)
@@ -359,6 +360,11 @@ def build_daily(hourly: pd.DataFrame) -> pd.DataFrame:
     out["n_gap_hours"] = g["pvgis_gap"].sum().astype(int)
     out["n_filled_hours"] = g["filled"].sum().astype(int)
     out["complete"] = (local["p_w"].isna() & daylight).groupby(day).sum() == 0
+    # No valid hour while the sun is clearly up (full-gap day): the sums above are 0 kWh,
+    # which is false, so store NaN instead. Yearly sums skip NaN, so totals are unchanged.
+    sun_up = local["elevation"] > GAP_THRESHOLD
+    no_data = (local["p_w"].notna() & sun_up).groupby(day).sum() == 0
+    out.loc[no_data, ["e_kwh", "h_kwh_m2", "e35_kwh", "kt_daily"]] = np.nan
 
     out = out[g.size() >= 23]
     out.index = pd.DatetimeIndex(out.index, name="date")
@@ -382,7 +388,8 @@ def yearly_totals(raw: pd.DataFrame, daily: pd.DataFrame) -> dict[str, dict[str,
     for col, dcol in (("p_w", "e_kwh"), ("p35_w", "e35_kwh")):
         raw_daily = data.daily_energy(raw, col)
         comp = daily.loc[daily["complete"], dcol]
-        monthly_mean = comp.groupby([comp.index.year, comp.index.month]).mean()
+        comp_idx = data.time_index(comp)
+        monthly_mean = comp.groupby([comp_idx.year, comp_idx.month]).mean()
         days = pd.Series(
             [pd.Period(year=y, month=m, freq="M").days_in_month for y, m in monthly_mean.index],
             index=monthly_mean.index,
@@ -410,7 +417,7 @@ def build(write: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any
     }
 
     pv, pv35, era = rename_and_convert(pvgis, pvgis35, era5)
-    before = lag_correlation(pv.set_axis(pvgis_key(pv.index))["ghi"], era["ghi_era5"])
+    before = lag_correlation(pv.set_axis(pvgis_key(data.time_index(pv)))["ghi"], era["ghi_era5"])
     df = align(pv, pv35, era)
     after = lag_correlation(df["ghi"], df["ghi_era5"])
     report["alignment"] = {
@@ -440,7 +447,7 @@ def build(write: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any
     report["gaps"] = {
         "threshold_deg": GAP_THRESHOLD,
         "hours": int(gap.sum()),
-        "days_with_gap": int(pd.Series(data.to_local(df).index.date)[gap.to_numpy()].nunique()),
+        "days_with_gap": int(pd.Series(data.time_index(data.to_local(df)).date)[gap.to_numpy()].nunique()),
         "runs_by_length": {str(k): int(v) for k, v in run_sizes.value_counts().sort_index().items()},
         "filled_hours": int(df["filled"].sum()),
         "still_nan_hours": int(df["p_w"].isna().sum()),
@@ -448,9 +455,9 @@ def build(write: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any
         "per_year": {
             str(y): {"gap_hours": int(gh), "filled_hours": int(fh)}
             for y, gh, fh in zip(
-                gap.groupby(gap.index.year).sum().index,
-                gap.groupby(gap.index.year).sum(),
-                df["filled"].groupby(df.index.year).sum(),
+                gap.groupby(data.time_index(gap).year).sum().index,
+                gap.groupby(data.time_index(gap).year).sum(),
+                df["filled"].groupby(data.time_index(df).year).sum(),
                 strict=True,
             )
         },

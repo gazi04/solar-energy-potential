@@ -110,7 +110,7 @@ def test_gap_day_is_incomplete(fixture_hourly):
     assert gap.sum() == 3
     df = clean.fill_short_gaps(clean.apply_gaps(df, gap))
     daily = clean.build_daily(df)
-    day = daily.loc["2023-06-22"]
+    day = daily.loc["2023-06-22"].to_dict()
     assert not day["complete"]
     assert day["n_gap_hours"] == 3 and day["n_filled_hours"] == 0
 
@@ -119,6 +119,19 @@ def test_short_gap_day_is_complete_after_fill(fixture_hourly):
     df = fixture_hourly.copy()
     df.loc[pd.Timestamp("2023-06-22 10:00", tz="UTC"), ["ghi", "p_w", "sun_height_pvgis"]] = 0.0
     df = clean.fill_short_gaps(clean.apply_gaps(df, clean.detect_gaps(df)))
-    day = clean.build_daily(df).loc["2023-06-22"]
+    day = clean.build_daily(df).loc["2023-06-22"].to_dict()
     assert day["complete"] and day["n_filled_hours"] == 1
     assert day["e_kwh"] > 20  # sunny June day, flat 5 kWp
+
+
+def test_full_gap_day_has_nan_energy_not_zero(fixture_hourly):
+    df = fixture_hourly.copy()
+    # whole 22 June (local) without data while the sun is up
+    local_day = df.index.tz_convert("Europe/Belgrade").date == pd.Timestamp("2023-06-22").date()
+    up = local_day & (df["elevation"] > 0).to_numpy()
+    df.loc[up, ["ghi", "bhi", "dhi", "p_w", "poa35", "p35_w", "sun_height_pvgis"]] = 0.0
+    df = clean.fill_short_gaps(clean.apply_gaps(df, clean.detect_gaps(df)))
+    daily = clean.build_daily(df)
+    day = daily.loc["2023-06-22"].to_dict()
+    assert not day["complete"]
+    assert np.isnan(day["e_kwh"]) and np.isnan(day["kt_daily"])
