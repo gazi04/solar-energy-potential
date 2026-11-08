@@ -28,6 +28,7 @@ dev = [
     "jupyterlab>=4.6.5",
     "nbconvert>=7.17.2",
     "nbformat>=5.11.1",
+    "pandas-stubs>=3.1.0.261029",
     "pytest>=9.2.0",
 ]
 

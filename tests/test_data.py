@@ -64,7 +64,7 @@ def test_quick_summary_detects_missing_hour(pvgis):
 def test_load_openmeteo():
     df = data.load_openmeteo_hourly(path=FIX / "openmeteo_hourly_sample.csv")
     assert len(df) == 48
-    assert str(df.index.tz) == "UTC"
+    assert str(data.time_index(df).tz) == "UTC"
     assert df.index[0] == pd.Timestamp("2023-06-21 00:00", tz="UTC")
     assert {"temperature_2m", "cloud_cover", "shortwave_radiation"} <= set(df.columns)
 

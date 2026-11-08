@@ -256,7 +256,7 @@ def download_openmeteo(force: bool) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     parser.add_argument("--force", action="store_true", help="re-download existing files")
     parser.add_argument("--only", choices=["pvgis", "openmeteo"], help="download one source only")
     args = parser.parse_args(argv)

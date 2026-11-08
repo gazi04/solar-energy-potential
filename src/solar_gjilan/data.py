@@ -119,7 +119,7 @@ def daily_energy(df: pd.DataFrame, column: str = "P_W") -> pd.Series:
     1 Jan of the next year in Gjilan) while keeping the 23-hour DST day.
     """
     hourly = to_local(df)[column]
-    grouped = hourly.groupby(hourly.index.date)
+    grouped = hourly.groupby(time_index(hourly).date)
     daily = grouped.sum()[grouped.count() >= 23] / 1000
     return daily.rename(f"{column}_kWh_day")
 
@@ -131,19 +131,19 @@ def sunniest_day(df: pd.DataFrame, year: int, month: int, column: str = "G_poa")
     subset = daily[(dates.year == year) & (dates.month == month)]
     if subset.empty:
         raise ValueError(f"no data for {year}-{month:02d}")
-    return pd.Timestamp(subset.idxmax())
+    return argmax_date(subset)
 
 
 def one_day(df: pd.DataFrame, date: pd.Timestamp | str) -> pd.DataFrame:
     """Rows of one local calendar day, local-time index."""
     local = to_local(df)
-    return local[local.index.date == pd.Timestamp(date).date()]
+    return local[time_index(local).date == pd.Timestamp(date).date()]
 
 
 def quick_summary(df: pd.DataFrame) -> dict:
     """Basic completeness check: coverage, missing hours, NaNs, reconstructed share."""
     full = pd.date_range(df.index.min().floor("h"), df.index.max().floor("h"), freq="h")
-    present = df.index.floor("h")
+    present = time_index(df).floor("h")
     summary = {
         "rows": len(df),
         "start": df.index.min(),
