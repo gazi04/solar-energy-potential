@@ -271,3 +271,108 @@ def day_length_year(year: int) -> plt.Figure:
     ax2.set_xlim(dates[0], dates[-1])
     fig.tight_layout()
     return fig
+
+
+# --- figure 8 ------------------------------------------------------------------
+
+
+def derivatives_overview(hourly: pd.DataFrame, daily: pd.DataFrame, year: int, month: int = 6,
+                         n: int = 172) -> plt.Figure:
+    """Derivatives (M1 step 5), six panels.
+
+    Row 1: sun elevation α(t) on day ``n`` and its derivative dα/dt (analytic line,
+           ``np.gradient`` dots); dα/dt = 0 at solar noon = maximum of α.
+    Row 2: error of forward vs central differences vs step Δt (log-log, slopes 1 and 2);
+           share of daylight hours with an hour-to-hour ramp |ΔP| > 1 kW/h per season.
+    Row 3: PV power P(t) and dP/dt (``np.gradient``) on the clearest and the most
+           variable day of ``month``/``year``.
+    """
+    from solar_gjilan import derivatives
+
+    apply_style()
+    fig, axes = plt.subplots(3, 2, figsize=(11, 10.5))
+
+    # Row 1: alpha and dalpha/dt
+    curve = derivatives.elevation_curve(n)
+    t = curve.index.to_numpy()
+    noon = 12.0
+    ax = axes[0, 0]
+    ax.plot(t, curve["elevation"], color=SERIES[0])
+    ax.axhline(0, color=TEXT_2, linewidth=1)
+    ax.axvline(noon, color=TEXT_2, linewidth=1, linestyle=":")
+    peak = curve["elevation"].max()
+    ax.annotate(f"max α = {peak:.2f}° at solar noon", (noon, peak), xytext=(6, -14),
+                textcoords="offset points", color=TEXT, fontsize=8.5)
+    ax.set_ylim(-75, 80)
+    ax.set_ylabel("Sun elevation α (°)")
+    ax.set_title(f"α(t), day {n} (21 June)")
+
+    ax = axes[0, 1]
+    ax.plot(t, curve["rate_analytic"], color=SERIES[0], label="Analytic (chain rule)")
+    sample = curve.iloc[::60]
+    ax.scatter(sample.index, sample["rate_gradient"], color=SERIES[1], s=22, zorder=3,
+               edgecolor=SURFACE, linewidth=1, label="np.gradient (1-min grid)")
+    ax.axhline(0, color=TEXT_2, linewidth=1)
+    ax.axvline(noon, color=TEXT_2, linewidth=1, linestyle=":")
+    ax.annotate("dα/dt = 0 at noon\n→ maximum of α", (noon, 0), xytext=(8, 14),
+                textcoords="offset points", color=TEXT, fontsize=8.5)
+    ax.set_ylabel("dα/dt (°/h)")
+    ax.set_title("dα/dt: rising fastest in the morning, 0 at noon, negative after")
+    ax.legend(loc="lower left")
+    for a in axes[0]:
+        a.set_xlim(0, 24)
+        a.set_xticks(range(0, 25, 3))
+        a.set_xlabel("Solar time (h)")
+
+    # Row 2 left: error study
+    err = derivatives.step_error_study(n)
+    order = derivatives.convergence_order(err)
+    ax = axes[1, 0]
+    for i, col in enumerate(["forward", "central"]):
+        ax.loglog(err.index, err[col], color=SERIES[i], marker="o", markersize=5,
+                  markeredgecolor=SURFACE, markeredgewidth=1.5,
+                  label=f"{col.capitalize()} difference, slope {order[col]:.2f}")
+    ax.set_xticks(err.index, [f"{m:g}" for m in err.index])
+    ax.minorticks_off()
+    ax.set_xlabel("Step Δt (min)")
+    ax.set_ylabel("Max error vs analytic (°/h)")
+    ax.set_title("Error shrinks as O(Δt) forward, O(Δt²) central")
+    ax.legend(loc="lower right")
+
+    # Row 2 right: ramp share per season
+    rate = derivatives.power_rate(hourly)
+    stats = derivatives.ramp_stats(rate)
+    seasons = stats["per_season"]
+    ax = axes[1, 1]
+    bars = ax.bar(seasons.index, seasons["share_above"] * 100, color=SERIES[0], width=0.6)
+    ax.bar_label(bars, fmt="%.1f %%", padding=3, color=TEXT, fontsize=8.5)
+    ax.set_ylabel("Daylight hours with |ΔP| > 1 kW/h (%)")
+    ax.set_ylim(0, seasons["share_above"].max() * 100 * 1.25)
+    ax.grid(axis="x", visible=False)
+    ax.set_title(f"Fast power swings, {cfg.START_YEAR}–{cfg.END_YEAR} "
+                 f"(all: {stats['share_above_step'] * 100:.1f} %, max {stats['max_abs_step']:.1f} kW/h)")
+
+    # Row 3: P and dP/dt on a clear vs a variable day
+    clear, variable = derivatives.pick_days(daily, rate, year, month)
+    for i, (date, label) in enumerate([(clear, "clearest"), (variable, "most variable")]):
+        day = derivatives.one_day(rate, date)
+        th = np.asarray(_clock_hours(pd.DatetimeIndex(day.index)))
+        e = daily.loc[date, "e_kwh"]
+        axes[2, 0].plot(th, day["p_kw"], color=SERIES[i], label=f"{date:%d %b %Y} ({label}, {e:.1f} kWh)")
+        axes[2, 1].plot(th, day["dpdt"], color=SERIES[i], marker="o", markersize=3.5)
+    axes[2, 0].set_ylabel(f"PV power P, {cfg.PEAK_KWP:g} kWp flat (kW)")
+    axes[2, 0].set_ylim(0, rate["p_kw"].max() * 1.35)
+    axes[2, 0].set_title("P(t): smooth on a clear day, jumps when clouds pass")
+    axes[2, 0].legend(loc="upper left")
+    axes[2, 1].axhline(0, color=TEXT_2, linewidth=1)
+    axes[2, 1].set_ylabel("dP/dt (kW/h), np.gradient")
+    axes[2, 1].set_title("dP/dt: one smooth wave vs repeated sign changes")
+    for a in axes[2]:
+        a.set_xlim(3, 22)
+        a.set_xticks(range(3, 23, 3))
+        a.set_xlabel("Local clock time (h)")
+
+    fig.suptitle("Derivatives: rate of change of sun height and PV power in Gjilan",
+                 x=0.01, ha="left", fontsize=12, fontweight="bold", color=TEXT)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    return fig

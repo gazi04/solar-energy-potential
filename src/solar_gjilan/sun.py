@@ -83,6 +83,36 @@ def horizon_fprime(t: ArrayLike, delta: ArrayLike, _alpha0: float = 0.0) -> Any:
     return -np.cos(PHI) * np.cos(delta) * np.sin(h) * np.pi / 12.0
 
 
+def elevation_formula(n: ArrayLike, t: ArrayLike) -> Any:
+    """Sun elevation alpha [deg] from the course formula (geometric, no refraction).
+
+    sin(alpha) = sin(phi) sin(delta) + cos(phi) cos(delta) cos(h),  h = 15 deg * (t - 12)
+
+    n: day of year, t: solar time [h]. Declination from Spencer 1971 (pvlib).
+    Used for the derivative study, where analytic and numerical dalpha/dt must
+    differentiate the same function.
+    """
+    delta = solarposition.declination_spencer71(n)
+    return np.rad2deg(np.arcsin(horizon_f(t, delta)))
+
+
+def elevation_rate(n: ArrayLike, t: ArrayLike) -> Any:
+    """Analytic d(alpha)/dt [deg/h] of ``elevation_formula`` (chain rule).
+
+    Differentiate both sides of sin(alpha) = sin(phi) sin(delta) + cos(phi) cos(delta) cos(h):
+
+        cos(alpha) * dalpha/dt = -cos(phi) cos(delta) sin(h) * dh/dt,   dh/dt = pi/12 rad/h
+        dalpha/dt = -cos(phi) cos(delta) sin(h) * (pi/12) / cos(alpha)   [rad/h]
+
+    The right-hand numerator is ``horizon_fprime``. Zero at solar noon (h = 0),
+    positive in the morning, negative in the afternoon. Undefined only at alpha = 90 deg,
+    which never happens at 42.5 deg N.
+    """
+    delta = solarposition.declination_spencer71(n)
+    cos_alpha = np.cos(np.deg2rad(elevation_formula(n, t)))
+    return np.rad2deg(horizon_fprime(t, delta) / cos_alpha)
+
+
 def newton_table(n: int, t0: float = 6.0, alpha0: float = 0.0) -> tuple[Any, pd.DataFrame]:
     delta = solarposition.declination_spencer71(n)
     path: list[float] = []

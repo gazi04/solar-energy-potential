@@ -17,6 +17,7 @@ def main() -> None:
     flat = data.load_pvgis_hourly(0)
     tilted = data.load_pvgis_hourly(cfg.REF_TILT)
     hourly = clean.load_hourly()
+    daily = clean.load_daily()
 
     summer = data.sunniest_day(flat, FIGURE_YEAR, 6)
     winter = data.sunniest_day(flat, FIGURE_YEAR, 12)
@@ -30,6 +31,7 @@ def main() -> None:
             hourly, [f"{FIGURE_YEAR}-06-21", f"{FIGURE_YEAR}-03-21", f"{FIGURE_YEAR}-12-21"]
         ),
         "fig07_day_length": plots.day_length_year(FIGURE_YEAR),
+        "fig08_derivatives": plots.derivatives_overview(hourly, daily, FIGURE_YEAR),
     }
     for name, fig in figures.items():
         print(f"saved {plots.save(fig, name).relative_to(cfg.ROOT)}")

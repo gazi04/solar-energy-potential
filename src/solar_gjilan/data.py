@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from solar_gjilan import config as cfg
@@ -80,6 +81,23 @@ def load_pvcalc(name: str = "optimal", path: Path | None = None) -> dict:
         "SD_y": totals["SD_y"],
         "l_total": totals["l_total"],
     }
+
+
+def time_index(obj: pd.DataFrame | pd.Series) -> pd.DatetimeIndex:
+    """The DatetimeIndex of a time-indexed frame or series.
+
+    pandas types ``.index`` as a plain ``Index``; this checks at runtime that it is a
+    DatetimeIndex, so ``.date``, ``.year``, ``.tz`` etc. are valid (and typed).
+    """
+    idx = obj.index
+    if not isinstance(idx, pd.DatetimeIndex):
+        raise TypeError(f"expected a DatetimeIndex, got {type(idx).__name__}")
+    return idx
+
+
+def argmax_date(s: pd.Series) -> pd.Timestamp:
+    """Index label (a date or timestamp) of the largest value of ``s``, ignoring NaN."""
+    return pd.Timestamp(s.index[int(np.nanargmax(s.to_numpy(dtype=float)))])
 
 
 def to_local(df: pd.DataFrame) -> pd.DataFrame:
